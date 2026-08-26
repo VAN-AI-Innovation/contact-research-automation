@@ -21,6 +21,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import com.vanai.backend.contact.ContactDeduplicationService;
 
 @Service
 public class CrawlerService {
@@ -29,16 +30,20 @@ public class CrawlerService {
 
     private final ParserService parserService;
     private final TaskExecutor taskExecutor;
+    private final ContactDeduplicationService contactDeduplicationService;
 
     private final ConcurrentMap<String, CrawlJob> jobs =
             new ConcurrentHashMap<>();
 
     public CrawlerService(
             ParserService parserService,
-            TaskExecutor taskExecutor
+            TaskExecutor taskExecutor,
+            ContactDeduplicationService contactDeduplicationService
     ) {
         this.parserService = parserService;
         this.taskExecutor = taskExecutor;
+        this.contactDeduplicationService = 
+                contactDeduplicationService;
     }
 
     public CrawlStartResponse start(CrawlStartRequest request) {
@@ -136,9 +141,17 @@ public class CrawlerService {
                             parserService.parse(currentUrl);
 
                     if (hasContact(response)) {
-                        job.addContact(response);
-                    }
 
+                        var updatedContacts = job.getContacts();
+
+                        updatedContacts.add(response);
+
+                        job.replaceContacts(
+                                contactDeduplicationService
+                                        .deduplicate(updatedContacts)
+                        );
+                    }
+                    
                 } catch (Exception ignored) {
                     // 개별 페이지 파싱 실패는 전체 작업 실패로 처리하지 않음
                 }

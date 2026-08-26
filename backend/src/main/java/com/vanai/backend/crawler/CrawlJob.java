@@ -86,4 +86,12 @@ public class CrawlJob {
             return contacts.size();
         }
     }
+
+    public void replaceContacts(List<ParserResponse> newContacts) {
+        synchronized (contacts) {
+            contacts.clear();
+            contacts.addAll(newContacts);
+        }
+    }
+
 }
