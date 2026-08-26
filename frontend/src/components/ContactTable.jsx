@@ -22,6 +22,7 @@ function ContactTable({ jobId, status }) {
 
   const [selectedIds, setSelectedIds] = useState([])
   const [excluding, setExcluding] = useState(false)
+  const [copyMessage, setCopyMessage] = useState('')
 
   useEffect(() => {
     if (status !== 'COMPLETED' || !jobId) {
@@ -205,6 +206,175 @@ function ContactTable({ jobId, status }) {
     }
   }
 
+  const formatContactForClipboard = (contact) => {
+    return [
+      `기업/기관: ${contact.organizationName ?? ''}`,
+      `담당자: ${contact.personName ?? ''}`,
+      `부서: ${contact.department ?? ''}`,
+      `직책: ${contact.position ?? ''}`,
+      `이메일: ${contact.email ?? ''}`,
+      `전화번호: ${contact.phone ?? ''}`,
+      `출처: ${contact.sourceUrl ?? ''}`,
+    ].join('\n')
+  }
+
+  const copyContacts = async (targetContacts) => {
+    if (targetContacts.length === 0) {
+      return
+    }
+
+    setError('')
+    setCopyMessage('')
+
+    const text = targetContacts
+      .map(formatContactForClipboard)
+      .join('\n\n')
+
+    try {
+      await navigator.clipboard.writeText(text)
+
+      setCopyMessage(
+        `${targetContacts.length}건이 클립보드에 복사되었습니다.`
+      )
+    } catch (err) {
+      console.error(err)
+      setError('클립보드 복사에 실패했습니다.')
+    }
+  }
+
+  const copySelectedContacts = () => {
+    const selectedContacts = contacts.filter((contact) =>
+      selectedIds.includes(contact.id)
+    )
+
+    copyContacts(selectedContacts)
+  }
+
+  const formatPhoneForCsv = (phone) => {
+    if (!phone) {
+      return ''
+    }
+
+    const raw = String(phone).trim()
+    const digits = raw.replace(/\D/g, '')
+
+    let formatted = raw
+
+    if (digits.length === 9 && digits.startsWith('02')) {
+      formatted =
+        `${digits.slice(0, 2)}-${digits.slice(2, 5)}-${digits.slice(5)}`
+    } else if (digits.length === 10) {
+      if (digits.startsWith('02')) {
+        formatted =
+          `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6)}`
+      } else {
+        formatted =
+          `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
+      }
+    } else if (digits.length === 11) {
+      formatted =
+        `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
+    }
+
+    return `="${formatted}"`
+  }
+
+  const escapeCsvValue = (value) => {
+    if (value === null || value === undefined) {
+      return ''
+    }
+
+    const text = String(value)
+
+    if (
+      text.includes(',') ||
+      text.includes('"') ||
+      text.includes('\n') ||
+      text.includes('\r')
+    ) {
+      return `"${text.replaceAll('"', '""')}"`
+    }
+
+    return text
+  }
+
+  const exportCsv = () => {
+    const targetContacts =
+      selectedIds.length > 0
+        ? contacts.filter((contact) =>
+            selectedIds.includes(contact.id)
+          )
+        : contacts
+
+    if (targetContacts.length === 0) {
+      setError('내보낼 연락처가 없습니다.')
+      return
+    }
+
+    setError('')
+    setCopyMessage('')
+
+    const headers = [
+      '기업/기관',
+      '담당자',
+      '부서',
+      '직책',
+      '이메일',
+      '전화번호',
+      '출처',
+    ]
+
+    const rows = targetContacts.map((contact) => [
+      contact.organizationName,
+      contact.personName,
+      contact.department,
+      contact.position,
+      contact.email,
+      formatPhoneForCsv(contact.phone),
+      contact.sourceUrl,
+    ])
+
+    const csv = [
+      headers.map(escapeCsvValue).join(','),
+      ...rows.map((row) =>
+        row.map(escapeCsvValue).join(',')
+      ),
+    ].join('\r\n')
+
+    const blob = new Blob(
+      [`\uFEFF${csv}`],
+      {
+        type: 'text/csv;charset=utf-8;',
+      }
+    )
+
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+
+    const now = new Date()
+
+    const date = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-')
+
+    const time = [
+      String(now.getHours()).padStart(2, '0'),
+      String(now.getMinutes()).padStart(2, '0'),
+    ].join('')
+
+    link.href = url
+    link.download =
+      `contact-research-${date}-${time}.csv`
+
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+
+    URL.revokeObjectURL(url)
+  }
+
   const displayValue = (value) => {
     return value && value.trim() ? value : '-'
   }
@@ -240,25 +410,54 @@ function ContactTable({ jobId, status }) {
             선택된 연락처 {selectedIds.length}건
           </span>
 
-          <button
-            type="button"
-            className="exclude-button"
-            onClick={excludeSelectedContacts}
-            disabled={
-              selectedIds.length === 0 ||
-              excluding
-            }
-          >
-            {excluding
-              ? '제외 중...'
-              : '선택 제외'}
-          </button>
+          <div className="selection-actions">
+            <button
+              type="button"
+              className="copy-button"
+              onClick={copySelectedContacts}
+              disabled={
+                selectedIds.length === 0 ||
+                excluding
+              }
+            >
+              선택 복사
+            </button>
+
+            <button
+              type="button"
+              className="csv-button"
+              onClick={exportCsv}
+              disabled={excluding}
+            >
+              CSV 다운로드
+            </button>
+
+            <button
+              type="button"
+              className="exclude-button"
+              onClick={excludeSelectedContacts}
+              disabled={
+                selectedIds.length === 0 ||
+                excluding
+              }
+            >
+              {excluding
+                ? '제외 중...'
+                : '선택 제외'}
+            </button>
+          </div>
         </div>
       )}
 
       {error && (
         <p className="contacts-error">
           {error}
+        </p>
+      )}
+
+      {copyMessage && (
+        <p className="contacts-success">
+          {copyMessage}
         </p>
       )}
 
@@ -438,16 +637,29 @@ function ContactTable({ jobId, status }) {
                           </button>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          className="edit-button"
-                          onClick={() =>
-                            startEdit(contact)
-                          }
-                          disabled={excluding}
-                        >
-                          수정
-                        </button>
+                        <div className="table-actions">
+                          <button
+                            type="button"
+                            className="copy-button"
+                            onClick={() =>
+                              copyContacts([contact])
+                            }
+                            disabled={excluding}
+                          >
+                            복사
+                          </button>
+
+                          <button
+                            type="button"
+                            className="edit-button"
+                            onClick={() =>
+                              startEdit(contact)
+                            }
+                            disabled={excluding}
+                          >
+                            수정
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
