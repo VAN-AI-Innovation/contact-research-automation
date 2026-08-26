@@ -22,6 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import com.vanai.backend.contact.ContactDeduplicationService;
+import com.vanai.backend.persistence.service.SessionService;
 
 @Service
 public class CrawlerService {
@@ -31,6 +32,7 @@ public class CrawlerService {
     private final ParserService parserService;
     private final TaskExecutor taskExecutor;
     private final ContactDeduplicationService contactDeduplicationService;
+    private final SessionService sessionService;
 
     private final ConcurrentMap<String, CrawlJob> jobs =
             new ConcurrentHashMap<>();
@@ -38,12 +40,14 @@ public class CrawlerService {
     public CrawlerService(
             ParserService parserService,
             TaskExecutor taskExecutor,
-            ContactDeduplicationService contactDeduplicationService
+            ContactDeduplicationService contactDeduplicationService,
+            SessionService sessionService
     ) {
         this.parserService = parserService;
         this.taskExecutor = taskExecutor;
         this.contactDeduplicationService = 
                 contactDeduplicationService;
+        this.sessionService = sessionService;
     }
 
     public CrawlStartResponse start(CrawlStartRequest request) {
@@ -62,6 +66,12 @@ public class CrawlerService {
 
         job.setStatus(CrawlJobStatus.RUNNING);
         jobs.put(jobId, job);
+
+        sessionService.createSession(
+                job.getJobId(),
+                job.getStartUrl(),
+                job.getMaxPages()
+        );
 
         taskExecutor.execute(() -> runCrawler(job));
 
@@ -87,6 +97,13 @@ public class CrawlerService {
 
         job.requestStop();
         job.setStatus(CrawlJobStatus.STOPPED);
+
+        sessionService.updateStatus(
+                job.getJobId(),
+                CrawlJobStatus.STOPPED,
+                job.getVisitedPages(),
+                job.getCollectedContacts()
+        );
 
         return CrawlStatusResponse.from(job);
     }
@@ -122,7 +139,16 @@ public class CrawlerService {
                     && job.getVisitedPages() < job.getMaxPages()) {
 
                 if (job.isStopRequested()) {
+
                     job.setStatus(CrawlJobStatus.STOPPED);
+
+                    sessionService.finishSession(
+                            job.getJobId(),
+                            CrawlJobStatus.STOPPED,
+                            job.getVisitedPages(),
+                            job.getContacts()
+                    );
+
                     return;
                 }
 
@@ -134,6 +160,12 @@ public class CrawlerService {
 
                 visited.add(currentUrl);
                 job.incrementVisitedPages();
+
+                sessionService.updateProgress(
+                        job.getJobId(),
+                        job.getVisitedPages(),
+                        job.getCollectedContacts()
+                );
 
                 try {
 
@@ -150,6 +182,12 @@ public class CrawlerService {
                                 contactDeduplicationService
                                         .deduplicate(updatedContacts)
                         );
+
+                        sessionService.updateProgress(
+                                job.getJobId(),
+                                job.getVisitedPages(),
+                                job.getCollectedContacts()
+                        );
                     }
                     
                 } catch (Exception ignored) {
@@ -157,7 +195,16 @@ public class CrawlerService {
                 }
 
                 if (job.isStopRequested()) {
+
                     job.setStatus(CrawlJobStatus.STOPPED);
+
+                    sessionService.finishSession(
+                            job.getJobId(),
+                            CrawlJobStatus.STOPPED,
+                            job.getVisitedPages(),
+                            job.getContacts()
+                    );
+                    
                     return;
                 }
 
@@ -215,17 +262,51 @@ public class CrawlerService {
             }
 
             if (job.isStopRequested()) {
+
                 job.setStatus(CrawlJobStatus.STOPPED);
+
+                sessionService.finishSession(
+                        job.getJobId(),
+                        CrawlJobStatus.STOPPED,
+                        job.getVisitedPages(),
+                        job.getContacts()
+                );
+                
             } else {
+
                 job.setStatus(CrawlJobStatus.COMPLETED);
+
+                sessionService.finishSession(
+                        job.getJobId(),
+                        CrawlJobStatus.COMPLETED,
+                        job.getVisitedPages(),
+                        job.getContacts()
+                );
             }
 
         } catch (Exception e) {
 
             if (job.isStopRequested()) {
+
                 job.setStatus(CrawlJobStatus.STOPPED);
+
+                sessionService.finishSession(
+                        job.getJobId(),
+                        CrawlJobStatus.STOPPED,
+                        job.getVisitedPages(),
+                        job.getContacts()
+                );
+
             } else {
+
                 job.setStatus(CrawlJobStatus.FAILED);
+
+                sessionService.finishSession(
+                        job.getJobId(),
+                        CrawlJobStatus.FAILED,
+                        job.getVisitedPages(),
+                        job.getContacts()
+                );
             }
         }
     }
