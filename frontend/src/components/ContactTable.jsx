@@ -15,9 +15,13 @@ function ContactTable({ jobId, status }) {
   const [contacts, setContacts] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+
+  const [selectedIds, setSelectedIds] = useState([])
+  const [excluding, setExcluding] = useState(false)
 
   useEffect(() => {
     if (status !== 'COMPLETED' || !jobId) {
@@ -30,6 +34,7 @@ function ContactTable({ jobId, status }) {
   const loadContacts = async () => {
     setLoading(true)
     setError('')
+    setSelectedIds([])
 
     try {
       const response = await fetch(
@@ -113,15 +118,100 @@ function ContactTable({ jobId, status }) {
       setEditForm(EMPTY_FORM)
     } catch (err) {
       console.error(err)
-      setError('수정 내용을 저장하지 못했습니다. 입력값을 확인해주세요.')
+      setError(
+        '수정 내용을 저장하지 못했습니다. 입력값을 확인해주세요.'
+      )
     } finally {
       setSaving(false)
+    }
+  }
+
+  const toggleContact = (contactId) => {
+    setSelectedIds((prev) => {
+      if (prev.includes(contactId)) {
+        return prev.filter((id) => id !== contactId)
+      }
+
+      return [...prev, contactId]
+    })
+  }
+
+  const toggleAll = () => {
+    if (
+      contacts.length > 0 &&
+      selectedIds.length === contacts.length
+    ) {
+      setSelectedIds([])
+      return
+    }
+
+    setSelectedIds(
+      contacts.map((contact) => contact.id)
+    )
+  }
+
+  const excludeSelectedContacts = async () => {
+    if (selectedIds.length === 0 || excluding) {
+      return
+    }
+
+    setExcluding(true)
+    setError('')
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/contacts/exclude`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contactIds: selectedIds,
+          }),
+        }
+      )
+
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message)
+      }
+
+      const excludedIds = [...selectedIds]
+
+      setContacts((prev) =>
+        prev.filter(
+          (contact) =>
+            !excludedIds.includes(contact.id)
+        )
+      )
+
+      if (
+        editingId !== null &&
+        excludedIds.includes(editingId)
+      ) {
+        setEditingId(null)
+        setEditForm(EMPTY_FORM)
+      }
+
+      setSelectedIds([])
+    } catch (err) {
+      console.error(err)
+      setError(
+        '선택한 연락처를 제외하지 못했습니다.'
+      )
+    } finally {
+      setExcluding(false)
     }
   }
 
   const displayValue = (value) => {
     return value && value.trim() ? value : '-'
   }
+
+  const allSelected =
+    contacts.length > 0 &&
+    selectedIds.length === contacts.length
 
   if (status !== 'COMPLETED') {
     return null
@@ -144,6 +234,28 @@ function ContactTable({ jobId, status }) {
         <span>{contacts.length}건</span>
       </div>
 
+      {contacts.length > 0 && (
+        <div className="contacts-selection-bar">
+          <span>
+            선택된 연락처 {selectedIds.length}건
+          </span>
+
+          <button
+            type="button"
+            className="exclude-button"
+            onClick={excludeSelectedContacts}
+            disabled={
+              selectedIds.length === 0 ||
+              excluding
+            }
+          >
+            {excluding
+              ? '제외 중...'
+              : '선택 제외'}
+          </button>
+        </div>
+      )}
+
       {error && (
         <p className="contacts-error">
           {error}
@@ -159,6 +271,15 @@ function ContactTable({ jobId, status }) {
           <table className="contacts-table">
             <thead>
               <tr>
+                <th className="checkbox-column">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    aria-label="전체 연락처 선택"
+                  />
+                </th>
+
                 <th>기업/기관</th>
                 <th>담당자</th>
                 <th>부서</th>
@@ -172,19 +293,38 @@ function ContactTable({ jobId, status }) {
 
             <tbody>
               {contacts.map((contact) => {
-                const editing = editingId === contact.id
+                const editing =
+                  editingId === contact.id
+
+                const selected =
+                  selectedIds.includes(contact.id)
 
                 return (
                   <tr key={contact.id}>
+                    <td className="checkbox-column">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() =>
+                          toggleContact(contact.id)
+                        }
+                        aria-label={`${contact.id}번 연락처 선택`}
+                      />
+                    </td>
+
                     <td>
                       {editing ? (
                         <input
                           name="organizationName"
-                          value={editForm.organizationName}
+                          value={
+                            editForm.organizationName
+                          }
                           onChange={handleChange}
                         />
                       ) : (
-                        displayValue(contact.organizationName)
+                        displayValue(
+                          contact.organizationName
+                        )
                       )}
                     </td>
 
@@ -196,7 +336,9 @@ function ContactTable({ jobId, status }) {
                           onChange={handleChange}
                         />
                       ) : (
-                        displayValue(contact.personName)
+                        displayValue(
+                          contact.personName
+                        )
                       )}
                     </td>
 
@@ -208,7 +350,9 @@ function ContactTable({ jobId, status }) {
                           onChange={handleChange}
                         />
                       ) : (
-                        displayValue(contact.department)
+                        displayValue(
+                          contact.department
+                        )
                       )}
                     </td>
 
@@ -220,7 +364,9 @@ function ContactTable({ jobId, status }) {
                           onChange={handleChange}
                         />
                       ) : (
-                        displayValue(contact.position)
+                        displayValue(
+                          contact.position
+                        )
                       )}
                     </td>
 
@@ -232,7 +378,9 @@ function ContactTable({ jobId, status }) {
                           onChange={handleChange}
                         />
                       ) : (
-                        displayValue(contact.email)
+                        displayValue(
+                          contact.email
+                        )
                       )}
                     </td>
 
@@ -244,7 +392,9 @@ function ContactTable({ jobId, status }) {
                           onChange={handleChange}
                         />
                       ) : (
-                        displayValue(contact.phone)
+                        displayValue(
+                          contact.phone
+                        )
                       )}
                     </td>
 
@@ -267,8 +417,12 @@ function ContactTable({ jobId, status }) {
                         <div className="table-actions">
                           <button
                             type="button"
-                            onClick={() => saveEdit(contact.id)}
-                            disabled={saving}
+                            onClick={() =>
+                              saveEdit(contact.id)
+                            }
+                            disabled={
+                              saving || excluding
+                            }
                           >
                             저장
                           </button>
@@ -276,7 +430,9 @@ function ContactTable({ jobId, status }) {
                           <button
                             type="button"
                             onClick={cancelEdit}
-                            disabled={saving}
+                            disabled={
+                              saving || excluding
+                            }
                           >
                             취소
                           </button>
@@ -285,7 +441,10 @@ function ContactTable({ jobId, status }) {
                         <button
                           type="button"
                           className="edit-button"
-                          onClick={() => startEdit(contact)}
+                          onClick={() =>
+                            startEdit(contact)
+                          }
+                          disabled={excluding}
                         >
                           수정
                         </button>

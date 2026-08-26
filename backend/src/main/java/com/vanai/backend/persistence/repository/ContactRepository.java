@@ -8,7 +8,7 @@ import java.util.List;
 public interface ContactRepository
         extends JpaRepository<Contact, Long> {
 
-    List<Contact> findByCrawlSessionJobIdOrderByIdAsc(
+    List<Contact> findByCrawlSessionJobIdAndDeletedAtIsNullOrderByIdAsc(
             String jobId
     );
 
