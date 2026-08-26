@@ -23,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import com.vanai.backend.contact.ContactDeduplicationService;
 import com.vanai.backend.persistence.service.SessionService;
+import com.vanai.backend.crawler.sse.CrawlEventService;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Service
 public class CrawlerService {
@@ -33,6 +35,7 @@ public class CrawlerService {
     private final TaskExecutor taskExecutor;
     private final ContactDeduplicationService contactDeduplicationService;
     private final SessionService sessionService;
+    private final CrawlEventService crawlEventService;
 
     private final ConcurrentMap<String, CrawlJob> jobs =
             new ConcurrentHashMap<>();
@@ -41,13 +44,15 @@ public class CrawlerService {
             ParserService parserService,
             TaskExecutor taskExecutor,
             ContactDeduplicationService contactDeduplicationService,
-            SessionService sessionService
+            SessionService sessionService,
+            CrawlEventService crawlEventService
     ) {
         this.parserService = parserService;
         this.taskExecutor = taskExecutor;
         this.contactDeduplicationService = 
                 contactDeduplicationService;
         this.sessionService = sessionService;
+        this.crawlEventService = crawlEventService;
     }
 
     public CrawlStartResponse start(CrawlStartRequest request) {
@@ -86,6 +91,15 @@ public class CrawlerService {
         return CrawlStatusResponse.from(job);
     }
 
+    public SseEmitter subscribe(String jobId) {
+        CrawlJob job = getJob(jobId);
+
+        return crawlEventService.subscribe(
+                jobId,
+                job
+        );
+    }
+
     public CrawlStatusResponse stop(String jobId) {
 
         CrawlJob job = getJob(jobId);
@@ -104,6 +118,8 @@ public class CrawlerService {
                 job.getVisitedPages(),
                 job.getCollectedContacts()
         );
+
+        crawlEventService.sendStopped(job);
 
         return CrawlStatusResponse.from(job);
     }
@@ -149,6 +165,8 @@ public class CrawlerService {
                             job.getContacts()
                     );
 
+                    crawlEventService.sendStopped(job);
+
                     return;
                 }
 
@@ -189,7 +207,9 @@ public class CrawlerService {
                                 job.getCollectedContacts()
                         );
                     }
-                    
+
+                    crawlEventService.sendProgress(job);
+
                 } catch (Exception ignored) {
                     // 개별 페이지 파싱 실패는 전체 작업 실패로 처리하지 않음
                 }
@@ -204,6 +224,8 @@ public class CrawlerService {
                             job.getVisitedPages(),
                             job.getContacts()
                     );
+
+                    crawlEventService.sendStopped(job);
                     
                     return;
                 }
@@ -282,6 +304,8 @@ public class CrawlerService {
                         job.getVisitedPages(),
                         job.getContacts()
                 );
+
+                crawlEventService.sendCompleted(job);
             }
 
         } catch (Exception e) {
@@ -307,6 +331,8 @@ public class CrawlerService {
                         job.getVisitedPages(),
                         job.getContacts()
                 );
+
+                crawlEventService.sendFailed(job);
             }
         }
     }
