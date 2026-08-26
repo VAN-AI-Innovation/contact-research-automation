@@ -3,6 +3,7 @@ package com.vanai.backend.persistence.dto;
 import com.vanai.backend.persistence.entity.Contact;
 
 public record ContactResponse(
+        Long id,
         String organizationName,
         String personName,
         String department,
@@ -14,6 +15,7 @@ public record ContactResponse(
 
     public static ContactResponse from(Contact contact) {
         return new ContactResponse(
+                contact.getId(),
                 contact.getOrganizationName(),
                 contact.getPersonName(),
                 contact.getDepartment(),

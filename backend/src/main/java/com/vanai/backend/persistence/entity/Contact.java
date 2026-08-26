@@ -80,6 +80,51 @@ public class Contact {
         this.crawlSession = crawlSession;
     }
 
+    public void update(
+            String organizationName,
+            String personName,
+            String department,
+            String position,
+            String email,
+            String phone
+    ) {
+        if (organizationName != null) {
+            this.organizationName = normalize(organizationName);
+        }
+
+        if (personName != null) {
+            this.personName = normalize(personName);
+        }
+
+        if (department != null) {
+            this.department = normalize(department);
+        }
+
+        if (position != null) {
+            this.position = normalize(position);
+        }
+
+        if (email != null) {
+            this.email = normalize(email);
+        }
+
+        if (phone != null) {
+            this.phone = normalize(phone);
+        }
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+
+        return trimmed.isEmpty()
+                ? null
+                : trimmed;
+    }
+
     public Long getId() {
         return id;
     }
