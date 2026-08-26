@@ -152,7 +152,7 @@ public class SessionService {
         }
 
         return contactRepository
-                .findByCrawlSessionJobIdOrderByIdAsc(jobId)
+                .findByCrawlSessionJobIdAndDeletedAtIsNullOrderByIdAsc(jobId)
                 .stream()
                 .map(ContactResponse::from)
                 .toList();

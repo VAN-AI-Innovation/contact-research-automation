@@ -43,6 +43,9 @@ public class Contact {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
     protected Contact() {
     }
 
@@ -113,6 +116,16 @@ public class Contact {
         }
     }
 
+    public void softDelete() {
+        if (this.deletedAt == null) {
+            this.deletedAt = LocalDateTime.now();
+        }
+    }
+
+    public boolean isDeleted() {
+        return this.deletedAt != null;
+    }
+
     private String normalize(String value) {
         if (value == null) {
             return null;
@@ -167,5 +180,9 @@ public class Contact {
 
     public LocalDateTime getUpdatedAt() {
         return updatedAt;
+    }
+
+    public LocalDateTime getDeletedAt() {
+        return deletedAt;
     }
 }
