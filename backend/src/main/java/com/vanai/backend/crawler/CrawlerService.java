@@ -273,8 +273,17 @@ public class CrawlerService {
                         }
                     }
 
-                } catch (Exception ignored) {
-                    // 링크 탐색 실패 역시 다음 URL로 계속 진행
+                } catch (Exception e) {
+
+                    if (currentUrl.equals(job.getStartUrl())) {
+                        throw new IllegalStateException(
+                                "시작 URL에 접속할 수 없습니다: " + currentUrl,
+                                e
+                        );
+                    }
+
+                    // 중간 페이지 링크 탐색 실패는
+                    // 전체 Crawl 실패로 처리하지 않고 다음 URL로 진행
                 }
 
                 if (!queue.isEmpty()

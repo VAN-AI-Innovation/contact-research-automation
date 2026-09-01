@@ -126,12 +126,23 @@ public class ParserService {
         Set<String> phones = new LinkedHashSet<>();
 
         for (Element element : document.select("a[href^=tel:]")) {
-            String phone = element.attr("href")
+
+            String rawValue = element.attr("href")
                     .replaceFirst("(?i)^tel:", "")
                     .trim();
 
-            if (!phone.isBlank()) {
-                phones.add(normalizePhone(phone));
+            Matcher telMatcher =
+                    PHONE_PATTERN.matcher(rawValue);
+
+            while (telMatcher.find()) {
+
+                String normalized =
+                        normalizePhone(telMatcher.group());
+
+                if (normalized != null
+                        && !normalized.isBlank()) {
+                    phones.add(normalized);
+                }
             }
         }
 
@@ -145,21 +156,80 @@ public class ParserService {
     }
 
     private String extractOrganizationName(Document document) {
-        Element siteName = document.selectFirst("meta[property=og:site_name]");
 
-        if (siteName != null && !siteName.attr("content").isBlank()) {
-            return siteName.attr("content").trim();
+        // 1순위: og:site_name
+        Element siteName =
+                document.selectFirst("meta[property=og:site_name]");
+
+        if (siteName != null) {
+            String value = siteName.attr("content").trim();
+
+            if (!value.isBlank()) {
+                return value;
+            }
         }
 
+        // 2순위: application-name
+        Element applicationName =
+                document.selectFirst("meta[name=application-name]");
+
+        if (applicationName != null) {
+            String value =
+                    applicationName.attr("content").trim();
+
+            if (!value.isBlank()) {
+                return value;
+            }
+        }
+
+        // 3순위: title을 breadcrumb 단위로 분리
         String title = document.title();
 
         if (title == null || title.isBlank()) {
             return null;
         }
 
-        String[] parts = title.split("\\s[-|]\\s");
+        String[] parts = title.split(
+                "\\s*(?:<|>|\\||·|–|—)\\s*|\\s+-\\s+"
+        );
 
-        return parts[0].trim();
+        // 사이트명은 보통 title의 오른쪽에 있으므로
+        // 뒤에서부터 의미 있는 값을 찾음
+        for (int i = parts.length - 1; i >= 0; i--) {
+
+            String candidate = parts[i].trim();
+
+            if (candidate.isBlank()) {
+                continue;
+            }
+
+            if (isGenericPageLabel(candidate)) {
+                continue;
+            }
+
+            return candidate;
+        }
+
+        return title.trim();
+    }
+
+    private boolean isGenericPageLabel(String value) {
+
+        String normalized = value
+                .replaceAll("\\s+", "")
+                .toLowerCase();
+
+        return normalized.equals("소개")
+                || normalized.equals("회사소개")
+                || normalized.equals("기관소개")
+                || normalized.equals("센터소개")
+                || normalized.equals("공지사항")
+                || normalized.equals("지원사업")
+                || normalized.equals("접수마감")
+                || normalized.equals("상세")
+                || normalized.equals("상세보기")
+                || normalized.equals("홈")
+                || normalized.equals("home");
     }
 
     private String extractPersonName(Document document) {
@@ -179,7 +249,28 @@ public class ParserService {
     }
 
     private String extractDepartment(Document document) {
-        return null;
+
+        String text = document.text();
+
+        Pattern departmentPattern = Pattern.compile(
+                "(?:담당부서|담당 부서)\\s*[:：]?\\s*(.{2,100}?)(?=\\s*(?:접수기간|신청기간|사업기간|문의처|담당자|접수방법|$))"
+        );
+
+        Matcher matcher = departmentPattern.matcher(text);
+
+        if (!matcher.find()) {
+            return null;
+        }
+
+        String department = matcher.group(1)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (department.isBlank()) {
+            return null;
+        }
+
+        return department;
     }
 
     private String extractPosition(Document document) {
@@ -187,10 +278,54 @@ public class ParserService {
     }
 
     private String normalizePhone(String phone) {
-        return phone
-                .replaceAll("[^0-9+]", "-")
-                .replaceAll("-+", "-")
-                .replaceAll("^-|-$", "");
+
+    if (phone == null || phone.isBlank()) {
+        return null;
+    }
+
+    String value = phone.trim()
+            .replaceAll("[^0-9+]", "");
+
+    if (value.startsWith("+82")) {
+        value = "0" + value.substring(3);
+    }
+
+    String digits = value.replaceAll("[^0-9]", "");
+
+    if (digits.length() == 9 && digits.startsWith("02")) {
+        return digits.substring(0, 2)
+                + "-"
+                + digits.substring(2, 5)
+                + "-"
+                + digits.substring(5);
+    }
+
+    if (digits.length() == 10) {
+
+            if (digits.startsWith("02")) {
+                return digits.substring(0, 2)
+                        + "-"
+                        + digits.substring(2, 6)
+                        + "-"
+                        + digits.substring(6);
+            }
+
+            return digits.substring(0, 3)
+                    + "-"
+                    + digits.substring(3, 6)
+                    + "-"
+                    + digits.substring(6);
+        }
+
+        if (digits.length() == 11) {
+            return digits.substring(0, 3)
+                    + "-"
+                    + digits.substring(3, 7)
+                    + "-"
+                    + digits.substring(7);
+        }
+
+        return phone.trim();
     }
 
     private String firstOrNull(Set<String> values) {
